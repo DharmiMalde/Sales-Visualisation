@@ -1,0 +1,226 @@
+---
+title: "Sales Visualisation Project"
+author: "Dharmi Malde"
+output:
+  pdf_document: 
+    keep_tex: yes
+  html_document:
+    df_print: paged
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+
+
+
+
+# Introduction
+
+In the fast-moving world of retail, where what people like to buy can change from season to season, it's really important for stores to understand patterns, figure out insights, and use data to make smart decisions. 
+
+In this data visualization project, we're going to understand how stores sell things. We're going to look at how sales have changed over time and look at the seasonal trend. We also going to look at the group of items which gives maximum sales and look at what parameters have effect on sales.
+
+# Data Discriptiobn
+
+## Sales Data Description:
+
+**Date:** The date on which the sales data is recorded.  
+**Store_nbr:** An identifier for the store where the products are sold.  
+**Family:** The category or type of product sold (e.g., dairy, snacks, beverages).  
+**Sales:** The total sales for a product family at a specific store on a given date. Sales values may include fractional units (e.g., 1.5 kg of cheese).  
+**Onpromotion:** The number of items in a product family that were being promoted at a specific store on a given date.  
+
+## Store Metadata:
+
+**City:** The city where the store is located.  
+**State:** The state or region in Ecuador where the store is situated.  
+**Type:** The type or format of the store (e.g., supermarket, convenience store).  
+**Cluster:** A grouping of similar stores based on certain characteristics. 
+
+## Additional Data:
+
+**Oil Price Data:** Daily oil price data, which is crucial due to Ecuador's economic dependence on oil and its vulnerability to oil price fluctuations.  
+**Holidays Data:** Information about holidays, which can impact shopping patterns and sales.  
+**Daily Transaction Data:** Records of daily transactions for each store, providing insights into customer behavior and sales trends.  
+
+This dataset provides a comprehensive view of sales at Favorita stores in Ecuador, including details about products, stores, promotions, and external factors like oil prices and holidays. Analyzing this data can help identify sales trends, optimize inventory management, and make data-informed decisions in the retail sector.
+
+# Exploratory Data Analysis
+```{r Loading Data n Instaling Library, message=FALSE, warning=FALSE}
+sales = read.csv(file.choose("train.csv"))
+oil_price = read.csv(file.choose("oil.csv"))
+transaction = read.csv(file.choose(" "))
+family = unique(sales$family)
+n = nrow(sales) # There are 30 lakhs observation
+str_ids = unique(sales$store_nbr) # There are approximately 54 stores
+library(ggplot2)
+library(lubridate)
+library(fpp3)
+library(tsibble)
+library(stats)
+library(gridExtra)
+library(viridis)
+```
+
+```{r fig.height=3.5}
+date_wise_data = aggregate(sales ~ date, data = sales, FUN = sum)
+hist(date_wise_data$sales, col = "aquamarine", xlab = "Sales", ylab = "Probability", main = "Daily Sales", probability = T , border = "darkgreen")
+x <- seq(min(date_wise_data$sales), max(date_wise_data$sales), length.out = 1000)
+y <- dnorm(x, mean = mean(date_wise_data$sales), sd = sd(date_wise_data$sales))
+curve(dnorm(x, mean = mean(date_wise_data$sales), sd = sd(date_wise_data$sales)), col = "darkgreen", lwd = 2, add = TRUE)
+abline(v = seq(0, 1500000, by = 250000), col = "gray", lty = 2)
+abline(h = seq(0, 0.00001, by = 0.0000005), col = "gray", lty = 2)
+```
+In the preceding visualization, our objective was to gain insights into the daily sales patterns. The analysis of the graph reveals that the data exhibits a central tendency, with the majority of daily sales hovering around the 65,000 mark.
+
+```{r Ploting Family wise plot, fig.height=3.5}
+par(mfrow = c(1,2))
+family_wise_data = aggregate(sales ~ family, data = sales, FUN = sum)
+sorted_family_wise <- family_wise_data[order(family_wise_data$sales), ]
+# Top 5 and Bottom 5 bar diagram
+upper_family_data = sorted_family_wise[1:5,]
+lower_family_data = sorted_family_wise[29:33,]
+upper_family_data$sales = round(upper_family_data$sales/(10000))
+lower_family_data$sales = round(lower_family_data$sales/(10000000))
+
+
+g1 = ggplot(upper_family_data, aes(x = family, y = sales))+
+  geom_bar(stat = "identity", fill = "goldenrod2")+
+  geom_text(aes(label = sales, vjust = -0.15))+
+  labs(x = "Categories", y = "Sales (in lakh)", title = "Sales in bottom categories ")+
+  theme(plot.title = element_text(hjust = 0.5), axis.text.x = element_text(angle = 25,hjust = 1),panel.background = element_rect(fill = "white"),panel.grid.major = element_line(color = "gray", linetype = "dashed"),
+  panel.grid.minor = element_blank())
+
+g2 = ggplot(lower_family_data, aes(x = family, y = sales))+
+  geom_bar(stat = "identity", fill = "goldenrod2")+
+  geom_text(aes(label = sales, vjust = -0.15))+
+  labs(x = "Categories", y = "Sales (in cr)", title = "Sales in top categories ")+
+  theme(plot.title = element_text(hjust = 0.5), axis.text.x = element_text(angle = 45,hjust = 1),panel.background = element_rect(fill = "white"),panel.grid.major = element_line(color = "gray", linetype = "dashed"),
+  panel.grid.minor = element_blank())
+
+grid.arrange(g2,g1,nrow = 1)
+```
+The preceding diagram provides valuable insights into the categorization of items sold, distinguishing between the top and bottom categories. Notably, the top category predominantly comprises daily-use items, while the bottom category predominantly consists of occasional or infrequently purchased items.
+
+```{r Plotting sales of top 15 stores, fig.height=4}
+store_wise_data = aggregate(sales ~ store_nbr, data = sales, FUN = sum)
+
+# Sorting Family vise Dataframe
+sorted_store_wise <- store_wise_data[order(store_wise_data$sales), ] # Top 7 and Bottom 7 bar diagram
+# Can Find connection between location n sales
+sorted_store_wise$store_nbr = as.character(sorted_store_wise$store_nbr)
+sorted_store_wise$sales = round(sorted_store_wise$sales/100000)
+
+ggplot(sorted_store_wise[1:15,], aes(x = store_nbr , y = sales))+
+  geom_bar(stat = "identity", fill = "deepskyblue2")+
+  geom_text(aes(label = sales, vjust = -0.15))+
+  labs(x = "Store_ID", y = "Sales (in lakhs)", title = " Sales of top 15 Stores")+
+  theme(plot.title = element_text(hjust = 0.5),panel.background = element_rect(fill = "white"),panel.grid.major = element_line(color = "gray", linetype = "dashed"),
+  panel.grid.minor = element_blank())
+```
+The depicted diagram offers a glimpse into the sales performance of the top 15 stores. Whereas the top 5 stores, identified by their store IDs are 53, 54, 16, 12, and 13.
+
+```{r Transaction vs sales, fig.height=4}
+store_transaction = aggregate(transactions ~ store_nbr, data = transaction, FUN = sum)
+
+transaction_sales = merge(store_transaction,store_wise_data, by = "store_nbr")
+ggplot(transaction_sales, aes(x = transactions, y = sales)) +
+  geom_point(color = "darkolivegreen1",size = 4) +
+  labs(title = "No. of transaction vs Sales",
+       x = "No. of transaction in each store",
+       y = "Sales") +
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5),panel.grid.major = element_line(color = "gray", linetype = "dashed"),
+  panel.grid.minor = element_blank())
+```
+The scatter plot displayed above reveals a strong correlation between the number of transactions and sales, suggesting that the average transaction size across stores remains relatively consistent
+
+```{r Time Series Decomposition, fig.height=2.5}
+# We have data from 1st Jan 2013 to 16th May 2014
+# Time Series plot
+
+date_wise_data$date = as.Date(date_wise_data$date)
+#ggplot(date_wise_data)+
+#  geom_line(aes(x=date_wise_data$date,y = date_wise_data$sales))+
+#  xlab("Year") +
+#  ylab("Sales")
+
+ts_data = ts( date_wise_data$sales,start=2013,frequency = 365)
+decomposed = stl(ts_data, s.window = "periodic")
+
+#seasonal_component = stl_result$time.series[, "seasonal"]
+#trend_component = stl_result$time.series[, "trend"]
+#remainder_component = stl_result$time.series[, "remainder"]
+
+p_seasonal <- ggplot(data.frame(Date = time(ts_data), Seasonal = decomposed$time.series[, "seasonal"]), aes(x = Date, y = Seasonal)) +
+  geom_line(color = "lightgoldenrod", size = 1) +
+  labs(title = "Seasonal Component",
+       x = "Date",
+       y = "Sales") +
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5),panel.grid.major = element_line(color = "gray", linetype = "dashed"),
+  panel.grid.minor = element_blank()) 
+
+# Plot the trend component
+p_trend <- ggplot(data.frame(Date = time(ts_data), Trend = decomposed$time.series[, "trend"]), aes(x = Date, y = Trend)) +
+  geom_line(color = "orangered2", size = 1) +
+  labs(title = "Trend Component",
+       x = "Date",
+       y = "Sales") +
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5),panel.grid.major = element_line(color = "gray", linetype = "dashed"),
+  panel.grid.minor = element_blank()) 
+
+p_trend
+```
+The trend component plot above indicates a consistent upward trajectory in sales over the years, signifying a notable increase in sales
+
+```{r fig.height=3}
+p_seasonal
+```
+The seasonal component plot illustrates a noticeable spike in sales leading up to Christmas, followed by a subsequent decline immediately after the holiday period.
+
+```{r Effect of oil Price on sales, fig.height=2.5}
+oil_sales = merge(date_wise_data,oil_price,by="date",all.x = T, all.y = T)
+oil_sales$sales = oil_sales$sales/100000
+cleaned_oil_sales <- na.omit(oil_sales)
+ggplot(cleaned_oil_sales, aes(x = dcoilwtico, y = sales)) +
+  geom_point(alpha = 0.25,color = "mediumorchid3") +
+  labs(title = "Effect of oil price on sales",
+       x = "Oil Price",
+       y = "Sales (in lakhs)") +
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5),panel.grid.major = element_line(color = "gray", linetype = "dashed"),
+  panel.grid.minor = element_blank())
+#cor(cleaned_oil_sales$sales,cleaned_oil_sales$dcoilwtico)
+```
+The scatter plot presented above, depicting the relationship between oil prices and sales, provides a clear inference. It suggests that when oil prices exceed 75, there is a notable decrease in sales, whereas when oil prices fall below this threshold, sales experience an uptick.
+
+# Results
+
+**1. Daily Sales Patterns:** Our analysis of daily sales reveals a distinct central tendency, with the majority of daily sales consistently hovering around the 65,000 mark.
+
+**2. Item Categorization:** Items sold fall into two discernible categories. The top category predominantly includes essential daily-use items, while the bottom category comprises occasional or infrequently purchased items.
+
+**3. Top-Performing Stores:** Within our dataset of the top 15 stores, we pinpoint five standout stores with IDs 53, 54, 16, 12, and 13, distinguished by their remarkable sales performance.
+
+**4. Transaction-Sales Correlation:** A compelling observation emerges from our scatter plot analysis, indicating a robust correlation between transaction volume and sales. This suggests a consistent average transaction size across stores.
+
+**5. Sales Growth Over Years:** An unmistakable upward trend is evident in our sales data over the years, signifying significant sales growth.
+
+**6. Seasonal Sales Dynamics:** Delving into the seasonal component of our analysis, we observe a pronounced sales surge in the lead-up to Christmas, followed by a post-holiday decline.
+
+**7. Oil Price Influence:** Our exploration of the relationship between oil prices and sales unveils a noteworthy insight. Sales exhibit sensitivity to oil prices exceeding 75, with a significant drop observed in such instances.
+
+# Conclusion 
+
+In conclusion, our data analysis and visualization provide valuable insights into the dynamics of store sales. We observe a central tendency in daily sales, significant categorization differences among items, and the identification of top-performing stores. Additionally, we find a strong correlation between the number of transactions and sales, indicating consistent average transaction sizes.
+
+Over the years, sales have demonstrated a positive trend, and there are clear seasonal variations, with a surge in sales leading up to Christmas. Notably, our analysis highlights the impact of oil prices on sales, with sales showing sensitivity to oil prices exceeding 75.
+
+These insights serve as a foundation for strategic decision-making, allowing businesses to optimize their sales strategies, inventory management, and promotional efforts. Understanding these patterns and correlations can ultimately lead to enhanced sales performance and profitability in the retail sector.
